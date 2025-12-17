@@ -1,0 +1,166 @@
+---
+title: '2: Digital Soil Mapping'
+author: "Fabrice Mettler"
+date: "2025-11-25"
+output: html_document
+---
+
+The goal of this exercise is to predict wheter the soil is waterlogged at different depths (30, 50, and 100 cm). The categorical variable waterlog.* is used.
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(readr)
+library(ggplot2)
+library(ranger)
+library(here)
+library(knitr)
+library(parallel)
+```
+
+# Simple Model
+## loading the dataset
+
+```{r}
+df_full <- readRDS("../data/df_full.rds")
+
+head(df_full) |>
+  knitr::kable()
+```
+
+## model preparation
+
+!!! maybe we should use all the data and not just a part!!!
+
+```{r}
+# I transform the target variable into a factor
+df_full <- df_full |>
+  mutate(
+    waterlog.100 = factor(waterlog.100))
+
+# for confirmation
+str(df_full$waterlog.100)
+  
+```
+
+```{r}
+# Specify target: The pH in the top 10cm
+target <- "waterlog.100"
+
+# Specify predictors_all: Remove soil sampling and observational data
+predictors_all <- names(df_full)[14:ncol(df_full)]
+
+cat(
+  "The target is:", target,
+  "\nThe predictors_all are:", paste0(predictors_all[1:8], sep = ", "), "..."
+)
+```
+
+```{r}
+# Split dataset into training and testing sets
+df_train <- df_full |> 
+  filter(dataset == "calibration")
+
+df_test <- df_full |> 
+  filter(dataset == "validation")
+
+# Filter out any NA to avoid error when running a Random Forest
+df_train <- df_train |> 
+  drop_na()
+
+df_test <- df_test |> 
+  drop_na()
+
+# A little bit of verbose output:
+n_tot <- nrow(df_train) + nrow(df_test)
+
+perc_cal <- (nrow(df_train) / n_tot) |> round(2) * 100
+perc_val <- (nrow(df_test) / n_tot) |> round(2) * 100
+
+cat(
+  "For model training, we have a calibration / validation split of: ",
+  perc_cal, "/", perc_val, "%"
+)
+```
+
+
+```{r}
+# ranger() crashes when using tibbles, so we are using the
+# base R notation to enter the data
+rf_basic <- ranger(
+  y = df_train[, target],     # target variable
+  x = df_train[, predictors_all], # Predictor variables
+  seed = 101, # Specify the seed for randomization to reproduce the same model again
+  importance = "permutation", # Pick permutation to calculate variable importance
+  num.threads = parallel::detectCores() - 1
+) # Use all but one CPU core for quick model training
+
+# Print a summary of fitted model
+print(rf_basic)
+```
+
+The output confirms, that we are dealing with a classification, so everything is fine
+we further see that Mtry is 9, which is the number of randomly picked predictors per split.
+The OBB is ca. 21% which means that 21% of the observations are miss classified
+
+
+Evaluate the model on the testing subset of the data. Consider appropriate metrics as described in AGDS Book 9.4.1.2. Is the data balanced in terms of observed TRUE and FALSE values? What does this imply for the interpretation of the different metrics?
+
+```{r}
+
+```
+
+
+
+
+```{r}
+# Extract the variable importance and create a long tibble
+vi_rf_basic <- rf_basic$variable.importance |>
+  bind_rows() |>
+  pivot_longer(cols = everything(), names_to = "variable")
+
+# Plot variable importance, ordered by decreasing value
+gg <- vi_rf_basic |>
+  ggplot(aes(x = reorder(variable, value), y = value)) +
+  geom_bar(stat = "identity", fill = "grey50", width = 0.75) +
+  labs(
+    y = "Change in OOB MSE after permutation",
+    x = "",
+    title = "Variable importance based on OOB"
+  ) +
+  theme_classic() +
+  coord_flip()
+
+# Display plot
+gg
+```
+
+# Variable selection
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+# Model optimization
+
+```{r}
+
+```
+
+```{r}
+
+```
+# Probabilistic predictions
+probability = TRUE
+
+```{r}
+
+```
+
+```{r}
+
+```

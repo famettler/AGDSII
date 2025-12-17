@@ -1,0 +1,119 @@
+---
+title: "Block 6: Drought Prediction"
+author: "Fabrice Mettler"
+date: "2025-12-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(here)
+library(rnaturalearth)
+library(khroma)
+library(recipes)
+library(themis)
+```
+
+
+```{r}
+# read data
+df <- read_csv(here("data/competition2025_training_data.csv"))
+
+# read site meta information
+df_site_metainfo <- read_csv(here("data/fdk_site_info.csv"))
+```
+
+
+```{r}
+# construct data frame containing site meta info for sites for which we have the data
+# note: for some sites missing information
+df_sites <- df |> 
+  select(site,  vegtype) |> 
+  distinct() |> 
+  left_join(
+    df_site_metainfo |> 
+      rename(site = sitename),
+    by = join_by(site)
+  )
+```
+
+## Visualisation of data
+
+```{r}
+df |> 
+  filter(site %in% c("US-Ton", "CH-Lae")) |> 
+  ggplot(aes(date, flue)) +
+  geom_line() +
+  facet_wrap(~site, ncol = 1) +
+  labs(x = "Date", y = "fLUE (unitless)") +
+  theme_bw()
+```
+
+
+
+```{r}
+# plot on world map
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+ggplot() +
+  # world country outlines
+  geom_sf(data = world, fill = "gray95", color = "gray70", size = 0.2) +
+
+  geom_point(data = df_sites, aes(lon, lat, color = vegtype)) +
+
+  scale_color_batlowK(discrete = TRUE, name = "") +
+
+  # coordinate system (preserves lat/lon aspect)
+  coord_sf(
+    ylim = c(-60, 85),
+    expand = FALSE # to draw map strictly bounded by the specified extent
+  ) +
+
+  # labels and theme
+  labs(
+    x = "",
+    y = ""
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_line(color = "gray90", size = 0.2),
+    legend.position = "right"
+  )
+```
+
+```{r}
+visdat::vis_miss(
+  df,
+  warn_large_data = FALSE
+)
+```
+Problem: There is a lot of missing data
+Solution: imputation
+
+
+## Preprocessing
+### imputation
+Imputation can be done in an uninformative way (e.g. by using the median) or in an informative way (e.g. by using a KNN model). 
+```{r}
+# imputation
+pp |>
+  step_impute_knn(all_predictors(), neighbors = 5)
+```
+
+###  upsampling
+```{r}
+# upsampling
+?themis::step_upsample()
+```
+
+### Dummy-encode categorical predictor variables
+We have to transform categorical variables into...
+```{r}
+
+```
+
+### Random forest
+```{r}
+
+```
+

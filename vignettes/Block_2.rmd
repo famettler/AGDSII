@@ -11,13 +11,24 @@ output: html_document
 
 ## How can you improve the model used to regionally scale the results in Chapter 6?
 
+
+
 #### Provide at least three (3) ways to improve the model used.
+
+
 
 ## Implement at least one of these methods
 
+
 ## Statistically compare the results with the MODIS MCD12Q2 phenology product 
+
+
 #### compare the data spatially
+
+
 #### describe why you might or might not see the same patterns
+
+
 #### consider that 2010 was a ‘special’ year for the north east of the US
 
 
