@@ -5,7 +5,7 @@ date: "2025-11-25"
 output: html_document
 ---
 
-The goal of this exercise is to predict wheter the soil is waterlogged at different depths (30, 50, and 100 cm). The categorical variable waterlog.* is used.
+The goal of this exercise is to predict whether the soil at a depth of 100cm is waterlogged (waterlog.100). This variable is binary, taking values TRUE (1) if waterlogged, or FALSE (0) if not. A random forest is used to solve the task.
 
 ```{r setup, include=FALSE}
 library(dplyr)
@@ -16,32 +16,35 @@ library(ranger)
 library(here)
 library(knitr)
 library(parallel)
+library(Boruta)
+library(caret)
 ```
 
-# Simple Model
-## loading the dataset
-
-```{r}
+```{r, include = FALSE}
+### loading the dataset
 df_full <- readRDS("../data/df_full.rds")
 
 head(df_full) |>
   knitr::kable()
 ```
 
-## model preparation
+# Simple Model
+We start with a simple random forest model which is trained on all the predictors.
 
-!!! maybe we should use all the data and not just a part!!!
+## Model Preparation
+Before training, I transform waterlog.100 into a factor to indicate a classification task:
 
 ```{r}
-# I transform the target variable into a factor
+# transformation of the target variable into a factor
 df_full <- df_full |>
   mutate(
     waterlog.100 = factor(waterlog.100))
 
 # for confirmation
 str(df_full$waterlog.100)
-  
 ```
+
+As a further step of the data preaparation, I define the target (waterlog.100) and the predictor variables.
 
 ```{r}
 # Specify target: The pH in the top 10cm
@@ -55,6 +58,8 @@ cat(
   "\nThe predictors_all are:", paste0(predictors_all[1:8], sep = ", "), "..."
 )
 ```
+
+For the evaluation of the model, I separate the data set into a calibration and a validation set. The model is trained on the calibration data and tested on the validation data. The data set includes already labels for the split.
 
 ```{r}
 # Split dataset into training and testing sets
@@ -83,6 +88,7 @@ cat(
 )
 ```
 
+The data is now ready and I can implement the random forest. For that I set a seed for reproducibility. 
 
 ```{r}
 # ranger() crashes when using tibbles, so we are using the
@@ -99,19 +105,48 @@ rf_basic <- ranger(
 print(rf_basic)
 ```
 
-The output confirms, that we are dealing with a classification, so everything is fine
-we further see that Mtry is 9, which is the number of randomly picked predictors per split.
-The OBB is ca. 21% which means that 21% of the observations are miss classified
+The output confirms, that we are dealing with a classification. We further see that Mtry is 9, which is the number of randomly picked predictors per split.
+The OBB is ca. 21% which means that 21% of the observations are miss classified.
 
 
 Evaluate the model on the testing subset of the data. Consider appropriate metrics as described in AGDS Book 9.4.1.2. Is the data balanced in terms of observed TRUE and FALSE values? What does this imply for the interpretation of the different metrics?
 
-```{r}
+### Metrics for classification
+In chapter 9.4.1.2, we learned about the metrics for classification. The confusionMatrix() function provides the important metrics. 
 
+```{r}
+# check for class balance
+
+train_balance <- table(df_train$waterlog.100) |> prop.table()
+test_balance <- table(df_test$waterlog.100) |> prop.table()
+class_balance <- cbind(train_balance, test_balance)
+t(class_balance)
+```
+
+We see that in both data sets the case of unlogged soils is more frequent then watterlogged soil.
+
+```{r}
+# plot confusion matrix
+pred <- predict(rf_basic, df_test)
+pred_class <- pred$predictions
+
+conf_matrix <- caret::confusionMatrix(data = pred_class, reference = df_test$waterlog.100)
+conf_matrix
+```
+
+
+I visualize the confusion matrix as a mosaic plot: 
+```{r}
+mosaicplot(conf_matrix$table,
+  main = "Confusion matrix"
+)
 ```
 
 
 
+# Variable Selection
+
+### First, I plot the variable importance. Since some of them might be correlated, we need further analysis for the variable selection. Reducing variables is important to reduce model costs but also to reduce overfitting. Especially when variables are correlated, as the model may take the "important" information of one of these variables and may take the noice of the second variable into the model. 
 
 ```{r}
 # Extract the variable importance and create a long tibble
@@ -135,31 +170,150 @@ gg <- vi_rf_basic |>
 gg
 ```
 
-# Variable selection
+I use the Boruta-Algorithm for variable selection
 
 ```{r}
+set.seed(42)
 
+# run the algorithm
+bor <- Boruta::Boruta(
+  y = df_train[, target],
+  x = df_train[, predictors_all],
+  maxRuns = 50, # Number of iterations. Set to 30 or lower if it takes too long
+  num.threads = parallel::detectCores() - 1
+)
+
+# obtain results: a data frame with all variables, ordered by their importance
+df_bor <- Boruta::attStats(bor) |>
+  tibble::rownames_to_column() |>
+  arrange(desc(meanImp))
+
+# plot the importance result
+ggplot(
+  aes(
+    x = reorder(rowname, meanImp),
+    y = meanImp,
+    fill = decision
+  ),
+  data = df_bor
+) +
+  geom_bar(stat = "identity", width = 0.75) +
+  scale_fill_manual(values = c("grey30", "tomato", "grey70")) +
+  labs(
+    y = "Variable importance",
+    x = "",
+    title = "Variable importance based on Boruta"
+  ) +
+  theme_classic() +
+  coord_flip()
 ```
 
 ```{r}
+# get retained important variables
+predictors_selected <- df_bor |>
+  filter(decision == "Confirmed") |>
+  pull(rowname)
+
+length(predictors_selected)
+```
+
+```{r}
+# re-train Random Forest model
+rf_bor <- ranger(
+  y = df_train[, target], # target variable
+  x = df_train[, predictors_selected], # Predictor variables
+  seed = 42, # Specify the seed for randomization to reproduce the same model again
+  num.threads = parallel::detectCores() - 1
+) # Use all but one CPU core for quick model training
+
+# quick report and performance of trained model object
+rf_bor
+```
+
+```{r}
+# plot confusion matrix
+pred_bor <- predict(rf_bor, df_test)
+pred_class_bor <- pred_bor$predictions
+
+conf_matrix_bor <- caret::confusionMatrix(data = pred_class_bor, reference = df_test$waterlog.100)
+conf_matrix_bor
+```
+
+```{r}
+df_mod1 <- data.frame(
+  model = "Model with all predictors",
+  t(c(conf_matrix$overall, conf_matrix$byClass))
+  )
+
+df_mod2 <- data.frame(
+  model = "Model with selected predictors",
+  t(c(conf_matrix_bor$overall, conf_matrix_bor$byClass))
+  )
+
+comparison_table <- rbind(df_mod1, df_mod2)
+comparison_table <- t(comparison_table)
+comparison_table
 
 ```
+
+Which model generalises better to unseen data?
+Would the same model choice be made if we considered the OOB prediction error reported as part of the trained model object?
+
 
 # Model optimization
+Following hyperparameters are tuned: mtry controls how many predictors are sampled at each split, min.node.size controls the minimal size of terminal nodes.
 
+Implementation of a 5-fold cross-validation
 ```{r}
+set.seed(101)
+mod_cv <- caret::train(df_train[, predictors_all],
+  df_train[[target]],
+  method = "ranger",
+  trControl = caret::trainControl(method = "cv",
+                        number = 5,
+                        classProbs = F),
+  tuneGrid = expand.grid(mtry = c(5, 9, 15),
+                        splitrule = "gini",
+                        min.node.size = c(1, 5, 10)) ,
+  importance = "permutation",
+  num.trees = 500
+)
 
+# generic plot of the caret model object
+ggplot(mod_cv)
 ```
 
 ```{r}
-
+# generic print
+print(mod_cv)
 ```
+
 # Probabilistic predictions
+I now implify a probabilistic model with the tuned hyperparameters. 
 probability = TRUE
 
 ```{r}
+# ranger() crashes when using tibbles, so we are using the
+# base R notation to enter the data
+rf_prob <- ranger(
+  y = df_train[, target],     # target variable
+  x = df_train[, predictors_all], # Predictor variables
+  seed = 101, # Specify the seed for randomization to reproduce the same model again
+  importance = "permutation", # Pick permutation to calculate variable importance
+  probability = TRUE,
+  mtry = 5,
+  splitrule = "gini",
+  min.node.size = 5,
+  num.threads = parallel::detectCores() - 1
+) # Use all but one CPU core for quick model training
 
+# Print a summary of fitted model
+print(rf_prob)
 ```
+
+Infrastructure construction
+threshold $\tau 
+
 
 ```{r}
 
