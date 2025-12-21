@@ -37,11 +37,7 @@ Before training, I transform waterlog.100 into a factor to indicate a classifica
 # transformation of the target variable into a factor
 df_full <- df_full |>
   mutate(
-    waterlog.100 = factor(waterlog.100,
-    levels = c(0, 1),
-    labels = c("non-waterlog", "waterlog")
-    )
-  )
+    waterlog.100 = factor(waterlog.100))
 
 # for confirmation
 str(df_full$waterlog.100)
@@ -121,7 +117,7 @@ pred_class <- pred$predictions
 
 conf_matrix <- caret::confusionMatrix(data = pred_class,
                                       reference = df_test$waterlog.100,
-                                      positive = "waterlog")
+                                      positive = "1")
 conf_matrix
 ```
 ```{r}
@@ -234,7 +230,7 @@ pred_class_bor <- pred_bor$predictions
 
 conf_matrix_bor <- caret::confusionMatrix(data = pred_class_bor,
                                           reference = df_test$waterlog.100,
-                                          positive = "waterlog")
+                                          positive = "1")
 
 df_mod1 <- data.frame(
   model = "Model with all P",
