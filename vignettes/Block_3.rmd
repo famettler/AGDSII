@@ -23,6 +23,7 @@ library(caret)
 ```{r, include = FALSE}
 ### loading the dataset
 df_full <- readRDS("../data/df_full.rds")
+df_full_1 <- readRDS(here::here("../data/df_full.rds"))
 
 head(df_full) |>
   knitr::kable()
@@ -44,7 +45,7 @@ df_full <- df_full |>
 str(df_full$waterlog.100)
 ```
 
-As a further step of the data preaparation, I define the target (waterlog.100) and the predictor variables.
+As a further step of the data preparation, I define the target (waterlog.100) and the predictor variables.
 
 ```{r}
 # Specify target: The pH in the top 10cm
@@ -105,11 +106,8 @@ rf_basic <- ranger(
 print(rf_basic)
 ```
 
-The output confirms, that we are dealing with a classification. We further see that Mtry is 9, which is the number of randomly picked predictors per split.
+The output confirms, that we are dealing with a classification. We further see that Mtry is 9, which is the number of randomly picked predictors per split, and the target node size is 1.
 The OBB is ca. 21% which means that 21% of the observations are miss classified.
-
-
-Evaluate the model on the testing subset of the data. Consider appropriate metrics as described in AGDS Book 9.4.1.2. Is the data balanced in terms of observed TRUE and FALSE values? What does this imply for the interpretation of the different metrics?
 
 ### Metrics for classification
 In chapter 9.4.1.2, we learned about the metrics for classification. The confusionMatrix() function provides the important metrics. 
@@ -123,7 +121,9 @@ class_balance <- cbind(train_balance, test_balance)
 t(class_balance)
 ```
 
-We see that in both data sets the case of unlogged soils is more frequent then watterlogged soil.
+Is the data balanced in terms of observed TRUE and FALSE values? What does this imply for the interpretation of the different metrics?
+
+the class distribution shows a moderate class imbalance. Non-waterlogged soils are more frequent than waterlogged sites, with approximatel 59%  to 40% in the training set and 65% to 35% in the test set. This has an impact on the interpretation of the metrics below.
 
 ```{r}
 # plot confusion matrix
@@ -133,6 +133,10 @@ pred_class <- pred$predictions
 conf_matrix <- caret::confusionMatrix(data = pred_class, reference = df_test$waterlog.100)
 conf_matrix
 ```
+Accuracy
+
+
+
 
 
 I visualize the confusion matrix as a mosaic plot: 
@@ -266,15 +270,15 @@ Following hyperparameters are tuned: mtry controls how many predictors are sampl
 Implementation of a 5-fold cross-validation
 ```{r}
 set.seed(101)
-mod_cv <- caret::train(df_train[, predictors_all],
+mod_cv <- caret::train(df_train[, predictors_selected],
   df_train[[target]],
   method = "ranger",
   trControl = caret::trainControl(method = "cv",
                         number = 5,
                         classProbs = F),
-  tuneGrid = expand.grid(mtry = c(5, 9, 15),
+  tuneGrid = expand.grid(mtry = c(5, 9, 15, 20),
                         splitrule = "gini",
-                        min.node.size = c(1, 5, 10)) ,
+                        min.node.size = c(1, 5, 10, 15)) ,
   importance = "permutation",
   num.trees = 500
 )
@@ -311,10 +315,12 @@ rf_prob <- ranger(
 print(rf_prob)
 ```
 
-Infrastructure construction
-threshold $\tau 
-
-
+Reicever-operating-characteristic curve
 ```{r}
 
 ```
+
+
+The value chosen for the threshold $\tau$ is critical as it defines the point to which data points belong to the first group or the second. In the model above, we set $\tau$ to 0.5. By choosing a different value for $\tau$, we can tune the model to be more conservative to either class. In the case of informing an infrastructure construction project, where waterlogged soils are critical, one would rather choose a smaller threshold, e.g. $\tau$ = 0.9. This means that the model is 90% sure that the soil is not waterlogged. If waterlogged soil is not critical, but still unwanted, one may choose a less conservative threshold, e.g. $\tau$ = 0.75. 
+
+It gets more complicated, when false positive outcome results in high costs. One example would be modeling the probability for a land slide. Let's imagine a small village is located below and will get hit by a landslide. One would want to inform the local authorities in time to evacuate the village. Such an evacuation on the other hand comes with great costs. A false negative outcome on the other hand would cost the life of the people in the village. In this case one would even have to value human life.
