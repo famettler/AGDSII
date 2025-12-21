@@ -20,26 +20,28 @@ library(Boruta)
 library(caret)
 ```
 
-```{r, include = FALSE}
+```{r, include=FALSE}
 ### loading the dataset
-df_full <- readRDS("../data/df_full.rds")
-df_full_1 <- readRDS(here::here("../data/df_full.rds"))
+df_full <- readRDS(here::here("data", "df_full.rds"))
 
 head(df_full) |>
   knitr::kable()
 ```
-
 # Simple Model
 We start with a simple random forest model which is trained on all the predictors.
 
-## Model Preparation
+#### Model Preparation
 Before training, I transform waterlog.100 into a factor to indicate a classification task:
 
 ```{r}
 # transformation of the target variable into a factor
 df_full <- df_full |>
   mutate(
-    waterlog.100 = factor(waterlog.100))
+    waterlog.100 = factor(waterlog.100,
+    levels = c(0, 1),
+    labels = c("non-waterlog", "waterlog")
+    )
+  )
 
 # for confirmation
 str(df_full$waterlog.100)
@@ -89,7 +91,7 @@ cat(
 )
 ```
 
-The data is now ready and I can implement the random forest. For that I set a seed for reproducibility. 
+The split into the two datasets was successful and is balanced. The data is now ready and we can implement the random forest. For that, we set a seed for reproducibility. 
 
 ```{r}
 # ranger() crashes when using tibbles, so we are using the
@@ -109,8 +111,25 @@ print(rf_basic)
 The output confirms, that we are dealing with a classification. We further see that Mtry is 9, which is the number of randomly picked predictors per split, and the target node size is 1.
 The OBB is ca. 21% which means that 21% of the observations are miss classified.
 
-### Metrics for classification
+#### Metrics for classification
 In chapter 9.4.1.2, we learned about the metrics for classification. The confusionMatrix() function provides the important metrics. 
+
+```{r}
+# plot confusion matrix
+pred <- predict(rf_basic, df_test)
+pred_class <- pred$predictions
+
+conf_matrix <- caret::confusionMatrix(data = pred_class,
+                                      reference = df_test$waterlog.100,
+                                      positive = "waterlog")
+conf_matrix
+```
+```{r}
+mosaicplot(conf_matrix$table,
+  main = "Confusion matrix"
+)
+```
+The results of the confusion matrix informs us about the quality of the predictions. The accuracy (i.e. the proportion of output that were correctly classified) is 77% which is pretty decent. True negatives (TN = 105), false negatives (FN = 21), false positive (FP = 25), and true positive (TP = 49) are visualized in the mosaic plot above. As soils are probably more often non-waterlogged then waterlogged, checking the class balance is important, as it influences the interpretation of the results.
 
 ```{r}
 # check for class balance
@@ -121,38 +140,12 @@ class_balance <- cbind(train_balance, test_balance)
 t(class_balance)
 ```
 
-Is the data balanced in terms of observed TRUE and FALSE values? What does this imply for the interpretation of the different metrics?
-
-the class distribution shows a moderate class imbalance. Non-waterlogged soils are more frequent than waterlogged sites, with approximatel 59%  to 40% in the training set and 65% to 35% in the test set. This has an impact on the interpretation of the metrics below.
-
-```{r}
-# plot confusion matrix
-pred <- predict(rf_basic, df_test)
-pred_class <- pred$predictions
-
-conf_matrix <- caret::confusionMatrix(data = pred_class, reference = df_test$waterlog.100)
-conf_matrix
-```
-Accuracy
-
-
-
-
-
-I visualize the confusion matrix as a mosaic plot: 
-```{r}
-mosaicplot(conf_matrix$table,
-  main = "Confusion matrix"
-)
-```
-
-
+The class distribution shows a moderate class imbalance. Non-waterlogged soils are more frequent than waterlogged sites, with approximately 59% to 41% in the training set and 65% to 35% in the test set. This has an impact on the interpretation of the metrics above. The accuracy becomes less informative as the model that classifies randomly more soil as non-waterlogged has a higher probability of beeing right by chance. The "no information rate" is 65% and describes exactly this process. But still, the model predicts statistical significantly better then when one would just always predict the majority class (p = 0.00016). When we can not trust the accuracy, the sensitivity and specificity become more important. The sensitivity (0.70) is the "true positive rate" and describes how well the model identifies waterlogged soils. This measurement is especially important, when missing waterlogged sites has severe consequences. The specificity (0.80)), on the other hand, informs about the ability of the model to detect true negatives. The positive predict value (0.66) indicates that if the model predicts waterlogging, it is in 66% of the cases true. Similar for the negative predict value (0.83). In these metrics, we can see the imbalance, as the model performs better when predicting the major class (non-waterlogged). Finally, the balanced accuracy of 0.75 confirms that the model perfoms reasonably well on both classes.
 
 # Variable Selection
+First, I plot the variable importance. Since some of them might be correlated, we need further analysis for the variable selection. Reducing variables is important to reduce model costs but also to reduce overfitting. Especially when variables are correlated, as the model may take the "important" information of one of these variables and may take the noice of the second variable into the model. 
 
-### First, I plot the variable importance. Since some of them might be correlated, we need further analysis for the variable selection. Reducing variables is important to reduce model costs but also to reduce overfitting. Especially when variables are correlated, as the model may take the "important" information of one of these variables and may take the noice of the second variable into the model. 
-
-```{r}
+```{r, fig.height = 10, fig.width = 6}
 # Extract the variable importance and create a long tibble
 vi_rf_basic <- rf_basic$variable.importance |>
   bind_rows() |>
@@ -176,7 +169,7 @@ gg
 
 I use the Boruta-Algorithm for variable selection
 
-```{r}
+```{r, fig.height = 10, fig.width = 6}
 set.seed(42)
 
 # run the algorithm
@@ -226,7 +219,7 @@ length(predictors_selected)
 rf_bor <- ranger(
   y = df_train[, target], # target variable
   x = df_train[, predictors_selected], # Predictor variables
-  seed = 42, # Specify the seed for randomization to reproduce the same model again
+  seed = 101, # Specify the seed for randomization to reproduce the same model again
   num.threads = parallel::detectCores() - 1
 ) # Use all but one CPU core for quick model training
 
@@ -239,30 +232,26 @@ rf_bor
 pred_bor <- predict(rf_bor, df_test)
 pred_class_bor <- pred_bor$predictions
 
-conf_matrix_bor <- caret::confusionMatrix(data = pred_class_bor, reference = df_test$waterlog.100)
-conf_matrix_bor
-```
+conf_matrix_bor <- caret::confusionMatrix(data = pred_class_bor,
+                                          reference = df_test$waterlog.100,
+                                          positive = "waterlog")
 
-```{r}
 df_mod1 <- data.frame(
-  model = "Model with all predictors",
+  model = "Model with all P",
   t(c(conf_matrix$overall, conf_matrix$byClass))
   )
 
 df_mod2 <- data.frame(
-  model = "Model with selected predictors",
+  model = "Model with sel. P",
   t(c(conf_matrix_bor$overall, conf_matrix_bor$byClass))
   )
 
 comparison_table <- rbind(df_mod1, df_mod2)
 comparison_table <- t(comparison_table)
 comparison_table
-
 ```
 
-Which model generalises better to unseen data?
-Would the same model choice be made if we considered the OOB prediction error reported as part of the trained model object?
-
+The second model, with reduced variables, generalizes slightly better to unseen data, which is indicated in an increase in nearly all the metrics. Importantly, the sensitivity increases as well, which means that the improved generalization does not come at the cost of more false positives. When considering the OBB prediction error in the model, the outcome would not be necessarily be the same. The OBB error is based on the training set and may favor more complex models which may fit the training data well but do not generalize.
 
 # Model optimization
 Following hyperparameters are tuned: mtry controls how many predictors are sampled at each split, min.node.size controls the minimal size of terminal nodes.
@@ -270,15 +259,16 @@ Following hyperparameters are tuned: mtry controls how many predictors are sampl
 Implementation of a 5-fold cross-validation
 ```{r}
 set.seed(101)
-mod_cv <- caret::train(df_train[, predictors_selected],
-  df_train[[target]],
+mod_cv <- caret::train(
+  df_train[, predictors_selected],
+  df_train$waterlog.100,
   method = "ranger",
   trControl = caret::trainControl(method = "cv",
                         number = 5,
                         classProbs = F),
-  tuneGrid = expand.grid(mtry = c(5, 9, 15, 20),
+  tuneGrid = expand.grid(mtry = c(6, 10, 20, 27),
                         splitrule = "gini",
-                        min.node.size = c(1, 5, 10, 15)) ,
+                        min.node.size = c(1, 5, 10, 20)) ,
   importance = "permutation",
   num.trees = 500
 )
@@ -286,6 +276,33 @@ mod_cv <- caret::train(df_train[, predictors_selected],
 # generic plot of the caret model object
 ggplot(mod_cv)
 ```
+```{r}
+ctrl <- trainControl(
+  method = "cv",
+  number = 5,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  savePredictions = "final"
+)
+
+set.seed(101)
+mod_cv <- caret::train(
+  x = df_train[, predictors_selected],
+  y = df_train$waterlog.100,
+  method = "ranger",
+  metric = "ROC",
+  trControl = ctrl,
+  tuneGrid = expand.grid(
+    mtry = c(6, 10, 20, 27),
+    splitrule = "gini",
+    min.node.size = c(1, 5, 10, 20)
+  ),
+  num.trees = 500,
+  importance = "permutation"
+)
+
+```
+
 
 ```{r}
 # generic print
