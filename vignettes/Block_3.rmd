@@ -37,7 +37,12 @@ Before training, I transform waterlog.100 into a factor to indicate a classifica
 # transformation of the target variable into a factor
 df_full <- df_full |>
   mutate(
-    waterlog.100 = factor(waterlog.100))
+    waterlog.100 = factor(
+      waterlog.100,
+      levels = c(0, 1),
+      labels = c("no", "yes")
+      )
+    )
 
 # for confirmation
 str(df_full$waterlog.100)
@@ -117,7 +122,7 @@ pred_class <- pred$predictions
 
 conf_matrix <- caret::confusionMatrix(data = pred_class,
                                       reference = df_test$waterlog.100,
-                                      positive = "1")
+                                      positive = "yes")
 conf_matrix
 ```
 ```{r}
@@ -129,7 +134,6 @@ The results of the confusion matrix informs us about the quality of the predicti
 
 ```{r}
 # check for class balance
-
 train_balance <- table(df_train$waterlog.100) |> prop.table()
 test_balance <- table(df_test$waterlog.100) |> prop.table()
 class_balance <- cbind(train_balance, test_balance)
@@ -162,6 +166,18 @@ gg <- vi_rf_basic |>
 # Display plot
 gg
 ```
+
+
+
+
+# WHAT DOES THIS MEAN?????
+
+
+
+
+
+
+
 
 I use the Boruta-Algorithm for variable selection
 
@@ -230,7 +246,7 @@ pred_class_bor <- pred_bor$predictions
 
 conf_matrix_bor <- caret::confusionMatrix(data = pred_class_bor,
                                           reference = df_test$waterlog.100,
-                                          positive = "1")
+                                          positive = "yes")
 
 df_mod1 <- data.frame(
   model = "Model with all P",
@@ -289,25 +305,52 @@ mod_cv <- caret::train(
   metric = "ROC",
   trControl = ctrl,
   tuneGrid = expand.grid(
-    mtry = c(6, 10, 20, 27),
+    mtry = c(3, 6, 10, 20, 30),
     splitrule = "gini",
     min.node.size = c(1, 5, 10, 20)
   ),
   num.trees = 500,
   importance = "permutation"
 )
-
+ggplot(mod_cv)
 ```
-
 
 ```{r}
 # generic print
 print(mod_cv)
 ```
 
+The model seems to perform best with a low mtry value and a minimal node size around 5. Smaller node sizes probably lead to an overfitting of the training data. We also see that the values of the ROC are close together. I implement another try with hyperparameters closer to the best hyperparameters above.
+
+```{r}
+set.seed(101)
+mod_cv2 <- caret::train(
+  x = df_train[, predictors_selected],
+  y = df_train$waterlog.100,
+  method = "ranger",
+  metric = "ROC",
+  trControl = ctrl,
+  tuneGrid = expand.grid(
+    mtry = c(3, 6, 8, 10),
+    splitrule = "gini",
+    min.node.size = c(3, 5, 7, 10)
+  ),
+  num.trees = 500,
+  importance = "permutation"
+)
+ggplot(mod_cv2)
+```
+
+```{r}
+# generic print
+print(mod_cv2)
+```
+
+The ROC seems to plateau in this example and does not result in a higher ROC. I therefore use the tuned hyperparameters of the first model for the further steps.
+
+
 # Probabilistic predictions
 I now implify a probabilistic model with the tuned hyperparameters. 
-probability = TRUE
 
 ```{r}
 # ranger() crashes when using tibbles, so we are using the
@@ -318,7 +361,7 @@ rf_prob <- ranger(
   seed = 101, # Specify the seed for randomization to reproduce the same model again
   importance = "permutation", # Pick permutation to calculate variable importance
   probability = TRUE,
-  mtry = 5,
+  mtry = 3,
   splitrule = "gini",
   min.node.size = 5,
   num.threads = parallel::detectCores() - 1
@@ -327,8 +370,28 @@ rf_prob <- ranger(
 # Print a summary of fitted model
 print(rf_prob)
 ```
+Confusion Matrix:
+```{r}
+# Extract probabilities for the "yes" class
+prob_yes <- pred_prob$predictions[, "yes"]
 
-Reicever-operating-characteristic curve
+# Convert to binary class with threshold 0.5
+pred_class_prob <- factor(
+  ifelse(prob_yes >= 0.5, "yes", "no"),
+  levels = c("no", "yes")  # Ensure same factor levels as reference
+)
+
+# Compute confusion matrix
+conf_matrix_prob <- caret::confusionMatrix(
+  data = pred_class_prob,
+  reference = df_test$waterlog.100,
+  positive = "yes"
+)
+
+conf_matrix_prob
+```
+
+#### ROC - Receiver Operating Characteristic curve
 ```{r}
 
 ```
