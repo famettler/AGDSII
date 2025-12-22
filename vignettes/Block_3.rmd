@@ -393,7 +393,25 @@ conf_matrix_prob
 
 #### ROC - Receiver Operating Characteristic curve
 ```{r}
+# Predict class probabilities on the test data
+pred_prob <- predict(rf_prob, df_test)
 
+# Extract probabilities for the positive class ("yes")
+prob_yes <- pred_prob$predictions[, "yes"]
+
+roc_obj <- roc(
+  response = df_test$waterlog.100,  # observed classes
+  predictor = prob_yes,             # predicted probabilities
+  levels = c("no", "yes"),           # explicitly define class order
+  direction = "<"                    # higher probs = more likely "yes"
+)
+
+plot(
+  roc_obj,
+  col = "black",
+  lwd = 2,
+  main = "ROC Curve – Waterlogged Soil (100 cm)"
+)
 ```
 
 
