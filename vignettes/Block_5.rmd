@@ -44,7 +44,7 @@ skimr::skim(dfs)
 Answers to the questions after reading the paper by Ludwig et al. (2023)
 
 #### Difference between a random cross-validation and a spatial cross-validation:
-In a cross-validation (CV), the dataset is split up in a training and a test (or validation) set. This split can be made randomly (random CV) or based on their spatial information (spatial CV) which, depending on the method, has a critical impact on the model accuracy. The difference gets especially important in the presence of spatially clustered training data. A model trained on random CV holds the ability of the model to make predictions only within the clusters and is usually not suitable for extrapolation. In contrast, for spatial CV, whole clusters are left out and used for validation. This trains the model to be able to better predict data points at new spatial locations. In other words, spatial CV cope better with spatial autocorrelation (which is usually the case in environmental data) as it explicitly separates them.
+In a cross-validation (CV), the dataset is split up in a training and a test (or validation) set. This split can be made randomly (random CV) or based on their spatial information (spatial CV) which, depending on the method, has a critical impact on the model accuracy. The difference gets especially important in the presence of spatially clustered training data. A model trained on random CV holds the ability to make predictions only within the clusters and is usually not suitable for extrapolation. In contrast, for spatial CV, whole clusters are left out and used for validation. This trains the model to be able to better predict data points at new spatial locations. In other words, spatial CV copes better with spatial autocorrelation (which is usually the case in environmental data) as it explicitly separates them.
 
 #### Alternative to geographical distance in Euclidian space:
 The geographical distance in Euclidean space works usually well in earth science, as geographically close points usually have similar environmental conditions. However, this is not always the case, especially if we have strong environmental gradients. Additionally, similar environmental conditions occur at places which are geographically far away. One example might be high mountain regions, which are generally more similar to each other than to nearby lowlands. Or one might think of the Mediterranean climate, which occurs around the Mediterranean Sea but also in south-western Australia, California and the Western Cape of South Africa. In this case, it may be more appropriate to use the "environmental closeness" i.e. the environmental feature space. This is a multidimensional space, where datapoints with similar environmental conditions are  closer together, independent of geographical location.
@@ -113,28 +113,28 @@ First, lets look at the distribution of our data across the globe:
 # get coast outline
 coast <- rnaturalearth::ne_coastline(scale = 110, returnclass = "sf")
 
-ggplot() +
+ggplot2::ggplot() +
 
   # plot coastline
-  geom_sf(
+  ggplot2::geom_sf(
     data = coast,
     colour = "black",
     size = 0.2
   ) +
 
   # set extent in longitude and latitude
-  coord_sf(
+  ggplot2::coord_sf(
     ylim = c(-60, 80),
     expand = FALSE
   ) + # to draw map strictly bounded by the specified extent
 
   # plot points on map
-  geom_point(data = dfs, aes(x = lon, y = lat), color = "red", size = 0.2) +
+  ggplot2::geom_point(data = dfs, ggplot2::aes(x = lon, y = lat), color = "red", size = 0.2) +
   labs(x = "", y = "") +
-  theme_bw() +
-  theme(legend.position = "bottom")
+  ggplot2::theme_bw() +
+  ggplot2::theme(legend.position = "bottom")
 ```
-Most data points are located in Europe and eastern Asia, whereas only a sparse amount of datapoints are located at the rest of the world. This implicates that a model trained with random CV is trained and evaluated mostly on points in Europe and China which probably results an a rather good mean accuracy, as most of the validation points will be located there as well (area of applicability), although the model might not be accurate at predicting in the rest of the world. 
+Most data points are located in Europe and eastern Asia, whereas only a sparse amount of datapoints are located at the rest of the world. This implicates that a model trained with random CV is trained and evaluated mostly on points in Europe and China which probably results an a rather good mean accuracy, as most of the validation points will be located there as well (area of applicability), although the model might not be accurate at predicting in the rest of the world. Since the region in Easter Asia is climatologically very diverse, the environmental CV might perform good, as most of the environmental conditions around the world are represented by some places in Eastern Asia. 
 
 #### Identification of geographical clusters 
 Now, let's look at the geographical cluster
@@ -153,22 +153,22 @@ dfs$cluster <- factor(clusters$cluster)
 # get coast outline
 coast <- rnaturalearth::ne_coastline(scale = 110, returnclass = "sf")
 
-ggplot() +
+ggplot2::ggplot() +
   
-  geom_sf(
+  ggplot2::geom_sf(
     data = coast,
     colour = "black",
     size = 0.2
   ) +
   
-  coord_sf(
+  ggplot2::coord_sf(
     ylim = c(-60, 80),
     expand = FALSE
   ) +
   
-  geom_point(
+  ggplot2::geom_point(
     data = dfs,
-    aes(x = lon, y = lat, colour = cluster),
+    ggplot2::aes(x = lon, y = lat, colour = cluster),
     size = 0.3
   )
 ```
@@ -176,7 +176,7 @@ The five clusters are indicated with different colors. We see how points belongi
 
 #### Distribution of leaf N by cluster
 ```{r}
-ggplot2::ggplot(dfs, aes(x = cluster, y = leafN)) + 
+ggplot2::ggplot(dfs, ggplot2::aes(x = cluster, y = leafN)) + 
   ggplot2::geom_boxplot(outlier.alpha = 0.3) +
   ggplot2::labs(
     x = "Spatial cluster",
@@ -246,9 +246,6 @@ train_test_by_fold <- function(idx_train, idx_val){
   return(tibble(rsq = rsq, rmse = rmse))
 }
 
-
-
-
 # apply function on each custom fold and collect validation results in a nice
 # data frame
 out_spatial <- purrr::map2_dfr(
@@ -266,7 +263,7 @@ cat(
 )
 ```
 
-Results are discussed later
+Results are discussed later.
 
 # Environmental cross-validation
 ```{r}
@@ -292,25 +289,27 @@ dfs$cluster_env <- factor(clusters_env$cluster)
 # get coast outline
 coast <- rnaturalearth::ne_coastline(scale = 110, returnclass = "sf")
 
-ggplot() +
+ggplot2::ggplot() +
   
-  geom_sf(
+  ggplot2::geom_sf(
     data = coast,
     colour = "black",
     size = 0.2
   ) +
   
-  coord_sf(
+  ggplot2::coord_sf(
     ylim = c(-60, 80),
     expand = FALSE
   ) +
   
-  geom_point(
+  ggplot2::geom_point(
     data = dfs,
-    aes(x = lon, y = lat, colour = cluster_env),
+    ggplot2::aes(x = lon, y = lat, colour = cluster_env),
     size = 0.3
   )
 ```
+The environmental clusters are presented in the maps above. When combining the information below, we can interpret them. For example, Cluster 4 has high mean annual temperatures and high precipitation. This matches the map as we see cluster 4 (blue), is located in the tropical region in South America and the tropical south of China. 
+
 ```{r}
 ggplot2::ggplot(dfs, aes(x = cluster_env, y = leafN)) + 
   ggplot2::geom_boxplot(outlier.alpha = 0.3) +
@@ -319,7 +318,7 @@ ggplot2::ggplot(dfs, aes(x = cluster_env, y = leafN)) +
     y = "Leaf N"
   )
 ```
-
+Leaf N again shows a more or less equal distribution among clusters.
 ```{r}
 ggplot2::ggplot(dfs, aes(x = cluster_env, y = mat)) + 
   ggplot2::geom_boxplot(outlier.alpha = 0.3) +
@@ -337,7 +336,7 @@ ggplot2::ggplot(dfs, aes(x = cluster_env, y = map)) +
     y = "mean annual precipitation"
   )
 ```
-Precipitation, on the other hand, differs less than before scaling, but still shows some destinct patterns
+Precipitation, on the other hand, differs less than before scaling, but still shows some distinct patterns.
 ```{r}
 group_folds_train <- purrr::map(
   seq(length(unique(dfs$cluster_env))),
@@ -400,4 +399,4 @@ cat(
   "Mean R^2:", mean(out_env$rsq), "\n"
 )
 ```
-When comparing the three CV methods, we see a difference in the resulting RMSE and $R^2$. For random CV, RMSE and $R^2$ are similar across folds. This is expected, as the model is trained in the same geographical and feature space as tested. Bu as mentioned in Ludwig et al. (2023), the area of applicability for this model is limitad to the space where training data is located. The spatial CV model has lower $R^2$ and higher RMSE compared to the random CV model. This is again expected, as this model was trained for be better at generalization as it was validated on spatially new data. We also see that especially fold nr. 3 seems to be bad at predicting. When looking on the map, we see that cluster 3 is located mostly in china, where we have large differences in environmental conditions in a relatively small geographical area. The environmental CV shows somehow similar results in RMSE and $R^2$ as the spatial CV. This is expected too, as environmental factors are also spatially dependent.
+When comparing the three CV methods, we see a difference in the resulting RMSE and $R^2$. For random CV, RMSE and $R^2$ are similar across folds. This is expected, as the model is trained in the same geographical and feature space as tested. Bu as mentioned in Ludwig et al. (2023), the area of applicability for this model is limited to the space where training data is located. Differences between folds are more pronounced in the spatial CV and environmental CV. This represents the fact, that there are differences between the geographical space and the feature space. Depending on which places are left out for training, the model struggles more or less to generalize. The spatial CV model has lower mean $R^2$ and higher RMSE compared to the random CV model. This is again expected, as this model was trained for being better at generalization as it was validated on spatially new data. We also see that especially fold nr. 3 seems to be bad at predicting. When looking on the map, we see that cluster 3 is located mostly in china, where we have large differences in environmental conditions in a relatively small geographical area. The environmental CV shows somehow similar results in RMSE and $R^2$ as the spatial CV. This is expected too, as environmental factors are also spatially dependent. The environmental CV outperforms the spatial CV, indicating its potential for such applications.
