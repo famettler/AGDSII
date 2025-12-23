@@ -2,7 +2,9 @@
 title: '2: Digital Soil Mapping'
 author: "Fabrice Mettler"
 date: "2025-11-25"
-output: html_document
+output:
+    html_document:
+    output_file: digital_soil_mapping.html
 ---
 
 The goal of this exercise is to predict whether the soil at a depth of 100cm is waterlogged (waterlog.100). This variable is binary, taking values TRUE (1) if waterlogged, or FALSE (0) if not. A random forest is used to solve the task.
