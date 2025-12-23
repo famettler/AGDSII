@@ -4,7 +4,8 @@ author: "Fabrice Mettler"
 date: "2025-12-22"
 output:
   html_document:
-  output_file: spatial_upscaling.html
+  output_dir: vignettes
+  output_file: spatial_upscaling_fm.html
 ---
 
 ```{r setup, include=FALSE}
