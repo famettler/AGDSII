@@ -18,6 +18,7 @@ library(knitr)
 library(parallel)
 library(Boruta)
 library(caret)
+library(pROC)
 ```
 
 ```{r, include=FALSE}
@@ -36,7 +37,7 @@ Before training, I transform waterlog.100 into a factor to indicate a classifica
 ```{r}
 # transformation of the target variable into a factor
 df_full <- df_full |>
-  mutate(
+  dplyr::mutate(
     waterlog.100 = factor(
       waterlog.100,
       levels = c(0, 1),
@@ -110,7 +111,7 @@ print(rf_basic)
 ```
 
 The output confirms, that we are dealing with a classification. We further see that Mtry is 9, which is the number of randomly picked predictors per split, and the target node size is 1.
-The OBB is ca. 21% which means that 21% of the observations are miss classified.
+The OOB provides an internal estimate and suggests that approximately 21% of the observations are miss-classified. 
 
 #### Metrics for classification
 In chapter 9.4.1.2, we learned about the metrics for classification. The confusionMatrix() function provides the important metrics. 
@@ -130,7 +131,7 @@ mosaicplot(conf_matrix$table,
   main = "Confusion matrix"
 )
 ```
-The results of the confusion matrix informs us about the quality of the predictions. The accuracy (i.e. the proportion of output that were correctly classified) is 77% which is pretty decent. True negatives (TN = 105), false negatives (FN = 21), false positive (FP = 25), and true positive (TP = 49) are visualized in the mosaic plot above. As soils are probably more often non-waterlogged then waterlogged, checking the class balance is important, as it influences the interpretation of the results.
+The results of the confusion matrix informs us about the quality of the predictions. The accuracy (i.e. the proportion of output that were correctly classified) is 77% which is pretty decent. True negatives (TN = 105), false negatives (FN = 21), false positive (FP = 25), and true positive (TP = 49) are visualized in the mosaic plot above. As soils are probably more often non-waterlogged than waterlogged, checking the class balance is important, as it influences the interpretation of the results.
 
 ```{r}
 # check for class balance
@@ -140,7 +141,7 @@ class_balance <- cbind(train_balance, test_balance)
 t(class_balance)
 ```
 
-The class distribution shows a moderate class imbalance. Non-waterlogged soils are more frequent than waterlogged sites, with approximately 59% to 41% in the training set and 65% to 35% in the test set. This has an impact on the interpretation of the metrics above. The accuracy becomes less informative as the model that classifies randomly more soil as non-waterlogged has a higher probability of beeing right by chance. The "no information rate" is 65% and describes exactly this process. But still, the model predicts statistical significantly better then when one would just always predict the majority class (p = 0.00016). When we can not trust the accuracy, the sensitivity and specificity become more important. The sensitivity (0.70) is the "true positive rate" and describes how well the model identifies waterlogged soils. This measurement is especially important, when missing waterlogged sites has severe consequences. The specificity (0.80)), on the other hand, informs about the ability of the model to detect true negatives. The positive predict value (0.66) indicates that if the model predicts waterlogging, it is in 66% of the cases true. Similar for the negative predict value (0.83). In these metrics, we can see the imbalance, as the model performs better when predicting the major class (non-waterlogged). Finally, the balanced accuracy of 0.75 confirms that the model perfoms reasonably well on both classes.
+The class distribution shows a moderate class imbalance. Non-waterlogged soils are more frequent than waterlogged sites, with approximately 59% to 41% in the training set and 65% to 35% in the test set. This has an impact on the interpretation of the metrics above. The accuracy becomes less informative as the model that classifies randomly more soil as non-waterlogged has a higher probability of being right by chance. The "no information rate" is 65% and describes exactly this process. But still, the model predicts statistical significantly better than when one would just always predict the majority class (p = 0.00016). When we can not trust the accuracy, the sensitivity and specificity become more important. The sensitivity (0.70) is the "true positive rate" and describes how well the model identifies waterlogged soils. This measurement is especially important, when missing waterlogged sites has severe consequences. The specificity (0.80)), on the other hand, informs about the ability of the model to detect true negatives. The positive predict value (0.66) indicates that if the model predicts waterlogging, it is in 66% of the cases true. Similar for the negative predict value (0.83). In these metrics, we can see the imbalance, as the model performs better when predicting the major class (non-waterlogged). Finally, the balanced accuracy of 0.75 confirms that the model performs reasonably well on both classes.
 
 # Variable Selection
 First, I plot the variable importance. Since some of them might be correlated, we need further analysis for the variable selection. Reducing variables is important to reduce model costs but also to reduce overfitting. Especially when variables are correlated, as the model may take the "important" information of one of these variables and may take the noice of the second variable into the model. 
@@ -166,19 +167,6 @@ gg <- vi_rf_basic |>
 # Display plot
 gg
 ```
-
-
-
-
-# WHAT DOES THIS MEAN?????
-
-
-
-
-
-
-
-
 I use the Boruta-Algorithm for variable selection
 
 ```{r, fig.height = 10, fig.width = 6}
@@ -216,6 +204,7 @@ ggplot(
   theme_classic() +
   coord_flip()
 ```
+The most important variables are NegO (Topographic negative openness), mrvbf25 (Multi-resolution valley bottom flatness at 25m resolution). Generally, the topography seems to be very important. But also mt_rr_y (Mean annual precipitation) belongs to the top 3 important predictors.
 
 ```{r}
 # get retained important variables
@@ -238,6 +227,7 @@ rf_bor <- ranger(
 # quick report and performance of trained model object
 rf_bor
 ```
+The Model with reduced predictors has a slightly improved OOB.
 
 ```{r}
 # plot confusion matrix
@@ -262,32 +252,12 @@ comparison_table <- rbind(df_mod1, df_mod2)
 comparison_table <- t(comparison_table)
 comparison_table
 ```
-
-The second model, with reduced variables, generalizes slightly better to unseen data, which is indicated in an increase in nearly all the metrics. Importantly, the sensitivity increases as well, which means that the improved generalization does not come at the cost of more false positives. When considering the OBB prediction error in the model, the outcome would not be necessarily be the same. The OBB error is based on the training set and may favor more complex models which may fit the training data well but do not generalize.
+The default of mtry is the (rounded down) square root of the number variables (=9). Default of min.node.size for classification is 1. The second model, with reduced variables, generalizes slightly better to unseen data, which is indicated in an increase in nearly all the metrics. Importantly, the sensitivity increases as well, which means that the improved generalization does not come at the cost of more false positives. When considering the OOB prediction error in the model, the outcome would not necessarily be the same. The OOB error is based on the training set and may favor more complex models which may fit the training data well but do not generalize.
 
 # Model optimization
 Following hyperparameters are tuned: mtry controls how many predictors are sampled at each split, min.node.size controls the minimal size of terminal nodes.
 
 Implementation of a 5-fold cross-validation
-```{r}
-set.seed(101)
-mod_cv <- caret::train(
-  df_train[, predictors_selected],
-  df_train$waterlog.100,
-  method = "ranger",
-  trControl = caret::trainControl(method = "cv",
-                        number = 5,
-                        classProbs = F),
-  tuneGrid = expand.grid(mtry = c(6, 10, 20, 27),
-                        splitrule = "gini",
-                        min.node.size = c(1, 5, 10, 20)) ,
-  importance = "permutation",
-  num.trees = 500
-)
-
-# generic plot of the caret model object
-ggplot(mod_cv)
-```
 ```{r}
 ctrl <- trainControl(
   method = "cv",
@@ -357,7 +327,7 @@ I now implify a probabilistic model with the tuned hyperparameters.
 # base R notation to enter the data
 rf_prob <- ranger(
   y = df_train[, target],     # target variable
-  x = df_train[, predictors_all], # Predictor variables
+  x = df_train[, predictors_selected], # Predictor variables
   seed = 101, # Specify the seed for randomization to reproduce the same model again
   importance = "permutation", # Pick permutation to calculate variable importance
   probability = TRUE,
@@ -372,6 +342,9 @@ print(rf_prob)
 ```
 Confusion Matrix:
 ```{r}
+# Predict class probabilities on the test data
+pred_prob <- predict(rf_prob, df_test)
+
 # Extract probabilities for the "yes" class
 prob_yes <- pred_prob$predictions[, "yes"]
 
@@ -388,17 +361,19 @@ conf_matrix_prob <- caret::confusionMatrix(
   positive = "yes"
 )
 
-conf_matrix_prob
+df_mod3 <- data.frame(
+  model = "Final Model",
+  t(c(conf_matrix_prob$overall, conf_matrix_bor$byClass))
+  )
+
+comparison_table <- rbind(df_mod1, df_mod2, df_mod3)
+comparison_table <- t(comparison_table)
+comparison_table
 ```
+The final model shows similar performance than the models before. The overall slight decrease in performance may show an unsuccessfull hyperparameter tuning which may resulted in an overfitting.
 
 #### ROC - Receiver Operating Characteristic curve
 ```{r}
-# Predict class probabilities on the test data
-pred_prob <- predict(rf_prob, df_test)
-
-# Extract probabilities for the positive class ("yes")
-prob_yes <- pred_prob$predictions[, "yes"]
-
 roc_obj <- roc(
   response = df_test$waterlog.100,  # observed classes
   predictor = prob_yes,             # predicted probabilities
@@ -414,7 +389,6 @@ plot(
 )
 ```
 
+The value chosen for the threshold $\tau$ is critical as it defines the point to which data points belong to the first group or the second. In the model above, we set $\tau$ to 0.5. By choosing a different value for $\tau$, we can tune the model to be more conservative to either class. In the case of informing an infrastructure construction project, where waterlogged soils are critical, one would rather choose a smaller threshold, e.g. $\tau$ = 0.2. This increases sensitivity at the cost of more false positives. If waterlogged soil is not critical, but still unwanted, one may choose a less conservative threshold, e.g. $\tau$ = 0.75. 
 
-The value chosen for the threshold $\tau$ is critical as it defines the point to which data points belong to the first group or the second. In the model above, we set $\tau$ to 0.5. By choosing a different value for $\tau$, we can tune the model to be more conservative to either class. In the case of informing an infrastructure construction project, where waterlogged soils are critical, one would rather choose a smaller threshold, e.g. $\tau$ = 0.9. This means that the model is 90% sure that the soil is not waterlogged. If waterlogged soil is not critical, but still unwanted, one may choose a less conservative threshold, e.g. $\tau$ = 0.75. 
-
-It gets more complicated, when false positive outcome results in high costs. One example would be modeling the probability for a land slide. Let's imagine a small village is located below and will get hit by a landslide. One would want to inform the local authorities in time to evacuate the village. Such an evacuation on the other hand comes with great costs. A false negative outcome on the other hand would cost the life of the people in the village. In this case one would even have to value human life.
+It gets more complicated, when false positive outcome results in high costs. One example would be modeling the probability for a land slide. Let's imagine a small village is located below and would get hit by the landslide. One would want to inform the local authorities in time to evacuate the village. Such an evacuation on the other hand comes with great costs. A false negative outcome on the other hand would cost the life of the people in the village. In this case one would even have to value human life. 
